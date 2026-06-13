@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Contract Redline War Room — Band of Agents</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body{background:#0a0e1a;color:#e6edf6;font-family:ui-sans-serif,system-ui,Segoe UI,Roboto}
+  .glow{box-shadow:0 0 24px rgba(56,189,248,.15)}
+  .lane{border:1px solid rgba(148,163,184,.15);border-radius:.75rem}
+  .pulse{animation:pulse 1.4s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:.4}50%{opacity:1}}
+  .hashmono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px}
+  .scroll::-webkit-scrollbar{width:6px}.scroll::-webkit-scrollbar-thumb{background:#1e293b;border-radius:3px}
+</style>
+</head>
+<body class="min-h-screen">
+<div class="max-w-7xl mx-auto p-5">
+
+  <!-- header -->
+  <header class="flex items-center justify-between mb-5">
+    <div>
+      <h1 class="text-2xl font-bold tracking-tight">🛡️ Contract Redline <span class="text-sky-400">War Room</span></h1>
+      <p class="text-slate-400 text-sm">4 specialized AI agents coordinate <b>through Band</b> · human holds the only key · sealed audit trail</p>
+    </div>
+    <div class="flex items-center gap-2">
+      <span id="partnerAIML" class="text-xs px-2 py-1 rounded bg-fuchsia-500/10 text-fuchsia-300 border border-fuchsia-500/30">AI/ML API ·0</span>
+      <span id="partnerFeather" class="text-xs px-2 py-1 rounded bg-amber-500/10 text-amber-300 border border-amber-500/30">Featherless ·0</span>
+      <button id="startBtn" class="bg-sky-500 hover:bg-sky-400 text-slate-900 font-semibold px-4 py-2 rounded-lg glow">▶ Run Review</button>
+    </div>
+  </header>
+
+  <div class="grid grid-cols-12 gap-4">
+
+    <!-- left: agent lanes + transcript -->
+    <section class="col-span-7 lane p-4">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="font-semibold">Band Room <span id="roomId" class="text-slate-500 text-xs"></span></h2>
+        <span id="status" class="text-xs text-slate-400">idle</span>
+      </div>
+      <div class="grid grid-cols-5 gap-2 mb-3 text-center text-xs">
+        <div id="lane-Coordinator" class="lane py-2 text-slate-300">🎯 Coordinator</div>
+        <div id="lane-Legal" class="lane py-2 text-slate-300">⚖️ Legal</div>
+        <div id="lane-Risk" class="lane py-2 text-slate-300">📊 Risk</div>
+        <div id="lane-Finance" class="lane py-2 text-slate-300">💰 Finance</div>
+        <div id="lane-Compliance" class="lane py-2 text-slate-300">🛡️ Compliance</div>
+      </div>
+      <div id="transcript" class="scroll h-[460px] overflow-y-auto space-y-1.5 pr-1"></div>
+    </section>
+
+    <!-- right: exposure + redlines + audit + gate -->
+    <aside class="col-span-5 space-y-4">
+
+      <div class="lane p-4">
+        <h3 class="font-semibold mb-2">Exposure</h3>
+        <div class="flex items-end gap-3">
+          <div id="score" class="text-5xl font-bold text-emerald-400">—</div>
+          <div class="text-slate-400 text-sm mb-1">/100</div>
+          <div id="rec" class="ml-auto text-sm px-3 py-1 rounded-full bg-slate-700/40">—</div>
+        </div>
+        <div class="w-full h-2 bg-slate-800 rounded mt-2"><div id="bar" class="h-2 rounded bg-emerald-400" style="width:0%"></div></div>
+        <div id="figs" class="text-xs text-slate-400 mt-2"></div>
+      </div>
+
+      <div class="lane p-4">
+        <h3 class="font-semibold mb-2">Redlines <span id="rlCount" class="text-slate-500 text-xs"></span></h3>
+        <div id="redlines" class="space-y-2 text-sm max-h-40 overflow-y-auto scroll"></div>
+      </div>
+
+      <div class="lane p-4">
+        <div class="flex items-center justify-between mb-2">
+          <h3 class="font-semibold">Audit Chain</h3>
+          <button id="verifyBtn" class="text-xs px-2 py-1 rounded bg-slate-700/50 hover:bg-slate-600">Verify 🔏</button>
+        </div>
+        <div id="verifyResult" class="text-xs mb-2 text-slate-400">—</div>
+        <div id="audit" class="hashmono text-slate-400 max-h-32 overflow-y-auto scroll space-y-0.5"></div>
+      </div>
+
+      <div class="lane p-4">
+        <h3 class="font-semibold mb-2">Human Gate <span class="text-slate-500 text-xs">(only a human can decide)</span></h3>
+        <div class="grid grid-cols-3 gap-2">
+          <button data-act="approve" class="gate bg-emerald-600/80 hover:bg-emerald-500 py-2 rounded text-sm">Approve</button>
+          <button data-act="request_changes" class="gate bg-amber-600/80 hover:bg-amber-500 py-2 rounded text-sm">Request Changes</button>
+          <button data-act="reject" class="gate bg-rose-600/80 hover:bg-rose-500 py-2 rounded text-sm">Reject</button>
+        </div>
+        <div id="gateResult" class="text-xs mt-2 text-slate-400"></div>
+      </div>
+
+    </aside>
+  </div>
+  <footer class="text-center text-xs text-slate-600 mt-6">Band of Agents Hackathon · Track 3 · Built on Band (thenvoi) · AI/ML API + Featherless</footer>
+</div>
+
+<script>
+const API = location.origin;
+let reviewId = null, ws = null;
+const $ = s => document.querySelector(s);
+const ICON = {state:"🏛️",event:"📡",message:"💬",seal:"🔏",done:"✅"};
+const COLOR = {Coordinator:"text-sky-300",Legal:"text-violet-300",Risk:"text-orange-300",Finance:"text-emerald-300",Compliance:"text-rose-300",human:"text-yellow-300",system:"text-slate-300"};
+
+function addLine(ev){
+  const t = $("#transcript");
+  const p = ev.payload || {};
+  let body = "";
+  if(ev.kind==="message"){ body = (p.mentions||[]).map(m=>'<b class="text-sky-300">@'+m+'</b>').join(" ")+" "+(p.text||""); }
+  else if(ev.kind==="event"){ const ek=p.event_kind||p.tool||p.action||"event";
+    const prov=p.provider?` <span class="text-fuchsia-300">[${p.provider}]</span>`:"";
+    const det=Object.fromEntries(Object.entries(p).filter(([k])=>!["event_kind","provider"].includes(k)));
+    body=`<span class="text-slate-200">${ek}</span>${prov} <span class="text-slate-500">${JSON.stringify(det)}</span>`; }
+  else if(ev.kind==="seal"){ body=`<b>SEALED</b> ${p.action} · root <span class="hashmono">${(p.root_hash||"").slice(0,16)}…</span>`; }
+  else if(ev.kind==="done"){ body="review complete — awaiting human gate"; }
+  else body=JSON.stringify(p);
+  const row=document.createElement("div");
+  row.className="text-sm leading-snug";
+  row.innerHTML=`<span class="text-slate-600 hashmono">#${ev.seq>=0?ev.seq:"·"}</span> ${ICON[ev.kind]||"•"} <b class="${COLOR[ev.actor]||'text-slate-300'}">${ev.actor}</b> ${body}`;
+  t.appendChild(row); t.scrollTop=t.scrollHeight;
+  // lane flash
+  const lane=$("#lane-"+ev.actor); if(lane){lane.classList.add("glow"); setTimeout(()=>lane.classList.remove("glow"),600);}
+  // handle special payloads
+  if(ev.kind==="event"&&(p.event_kind==="redline")) addRedline(p);
+  if(ev.kind==="event"&&p.event_kind==="final_packet") renderPacket(p);
+  if(ev.kind==="event"&&p.provider) bumpPartner(p.provider);
+  if(ev.kind==="seal") $("#gateResult").innerHTML=`Sealed by <b>${p.reviewer||'human'}</b> · root <span class="hashmono">${(p.root_hash||'').slice(0,24)}…</span>`;
+}
+const partner={aimlapi:0,featherless:0};
+function bumpPartner(pr){ if(pr==="aimlapi"){partner.aimlapi++;$("#partnerAIML").textContent="AI/ML API ·"+partner.aimlapi;}
+  if(pr==="featherless"){partner.featherless++;$("#partnerFeather").textContent="Featherless ·"+partner.featherless;} }
+function addRedline(p){ const d=$("#redlines");
+  const sev={high:"text-rose-400",medium:"text-amber-400",low:"text-emerald-400"}[p.severity]||"text-slate-300";
+  const el=document.createElement("div"); el.className="lane p-2";
+  el.innerHTML=`<div class="flex justify-between"><b>§${p.section}</b><span class="${sev}">${p.severity||""}</span></div>
+    <div class="text-slate-300">${p.issue||""}</div>
+    <div class="text-slate-500 text-xs mt-1">↳ ${p.suggested||""}</div>
+    <div class="text-slate-600 text-xs italic">"${(p.citation||"").slice(0,90)}"</div>`;
+  d.appendChild(el); $("#rlCount").textContent="("+d.children.length+")";
+}
+function renderPacket(p){
+  const s=p.exposure_score||0; $("#score").textContent=s;
+  const col = s>=70?"text-rose-400":s>=40?"text-amber-400":"text-emerald-400";
+  $("#score").className="text-5xl font-bold "+col;
+  $("#bar").style.width=s+"%"; $("#bar").className="h-2 rounded "+(s>=70?"bg-rose-400":s>=40?"bg-amber-400":"bg-emerald-400");
+  $("#rec").textContent=p.recommendation; $("#rec").className="ml-auto text-sm px-3 py-1 rounded-full "+(s>=70?"bg-rose-500/20 text-rose-300":s>=40?"bg-amber-500/20 text-amber-300":"bg-emerald-500/20 text-emerald-300");
+  $("#figs").innerHTML=`worst-case <b class="text-slate-200">$${(p.finance?.worst_case_usd||0).toLocaleString()}</b> · risk <b>${p.risk?.severity||"-"}</b> · compliance <b>${p.compliance?.verdict||"-"}</b>`;
+  $("#status").textContent="awaiting human gate";
+}
+
+async function start(){
+  $("#transcript").innerHTML=""; $("#redlines").innerHTML=""; $("#audit").innerHTML="";
+  $("#score").textContent="—"; $("#status").innerHTML='<span class="pulse text-sky-300">agents coordinating…</span>';
+  const r=await fetch(API+"/api/reviews",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({use_sample:true})}).then(r=>r.json());
+  reviewId=r.review_id; $("#roomId").textContent="· "+reviewId;
+  if(ws) ws.close();
+  ws=new WebSocket((API.replace("http","ws"))+"/ws/reviews/"+reviewId);
+  ws.onmessage=e=>addLine(JSON.parse(e.data));
+}
+$("#startBtn").onclick=start;
+$("#verifyBtn").onclick=async()=>{ if(!reviewId)return;
+  const a=await fetch(API+"/api/audit/"+reviewId).then(r=>r.json());
+  $("#audit").innerHTML=a.entries.map(e=>`#${e.seq} ${e.actor} <span class="text-slate-600">${e.entry_hash.slice(0,12)}…</span>`).join("<br>");
+  const v=await fetch(API+"/api/verify/"+reviewId).then(r=>r.json());
+  $("#verifyResult").innerHTML=v.valid?`<span class="text-emerald-400">✓ chain valid · ${v.entries} entries · root ${(v.root_hash||'').slice(0,16)}…</span>`:`<span class="text-rose-400">✗ TAMPERED at #${v.broken_at_seq}</span>`;
+};
+document.querySelectorAll(".gate").forEach(b=>b.onclick=async()=>{ if(!reviewId)return;
+  const d=await fetch(API+"/api/decision",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({review_id:reviewId,action:b.dataset.act,reviewer:"operator",note:"decided in War Room UI"})}).then(r=>r.json());
+  if(d.detail){$("#gateResult").textContent=d.detail;return;}
+  $("#gateResult").innerHTML=`Decision <b>${b.dataset.act}</b> sealed · verify ${d.verify.valid?'<span class="text-emerald-400">✓</span>':'✗'} · root <span class="hashmono">${d.root_hash.slice(0,20)}…</span>`;
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,30 @@
+[project]
+name = "contract-warroom"
+version = "0.1.0"
+description = "Contract Redline War Room — a regulated multi-agent contract review desk built on Band (Band of Agents Hackathon, Track 3)"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+    "band-sdk[anthropic,langgraph]>=0.1.0 ; python_version >= '3.11'",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "websockets>=12",
+    "pydantic>=2.7",
+    "python-dotenv>=1.0",
+    "pyyaml>=6.0",
+    "httpx>=0.27",
+    "pypdf>=4.2",
+    "langchain-openai>=0.1.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.23"]
+
+[tool.uv]
+# band-sdk pulls in thenvoi; if unavailable in the offline judging env the agents
+# fall back to SIMULATION mode (see agents/common/band_client.py).
+package = false
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"

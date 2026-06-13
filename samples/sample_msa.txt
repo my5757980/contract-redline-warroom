@@ -1,0 +1,31 @@
+MASTER SERVICES AGREEMENT
+
+This Master Services Agreement ("Agreement") is entered into between Acme Corp
+("Customer") and Vendor Cloud Ltd ("Provider").
+
+1. Definitions
+1.1 "Services" means the cloud data-processing services described in each Order Form.
+1.2 "Personal Data" means information relating to an identified natural person.
+
+3. Term and Renewal
+3.1 This Agreement renews automatically for successive twelve (12) month periods
+unless either party gives written notice of non-renewal at least ninety (90) days
+before the end of the then-current term.
+
+4. Fees
+4.1 Fees are $20,000 per month, invoiced monthly in advance.
+4.2 Late payments accrue a penalty of five percent (5%) per month on the overdue balance.
+
+6. Data Protection
+6.1 Provider may process Customer Personal Data to deliver the Services. The parties
+have not executed a separate Data Processing Agreement, and data may be processed in
+any region at Provider's discretion.
+
+8. Limitation of Liability
+8.1 Customer shall indemnify Provider for any breach of this Agreement, including any
+data breach, without limitation.
+8.2 Neither party's liability shall be limited under this Agreement, and consequential
+damages are recoverable in full.
+
+10. Governing Law
+10.1 This Agreement is governed by the laws of the State of Delaware.

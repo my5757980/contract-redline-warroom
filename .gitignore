@@ -1,0 +1,36 @@
+# secrets
+.env
+agent_config.yaml
+*.key
+
+# python
+__pycache__/
+*.pyc
+.venv/
+.uv/
+*.egg-info/
+.pytest_cache/
+
+# data / db
+*.db
+*.sqlite
+*.sqlite3
+warroom.db
+
+# node / next
+web/node_modules/
+web/.next/
+web/out/
+node_modules/
+
+# playwright mcp artifacts
+.playwright-mcp/
+
+# os / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# agent folder credentials (per specifyplus security note)
+.claude/settings.local.json
