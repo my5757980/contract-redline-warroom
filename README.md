@@ -10,6 +10,13 @@ sealed, tamper-evident audit trail.**
 
 ![War Room](docs/warroom-demo.png)
 
+> ✅ **Verified live on the real Band platform** — 5 remote agents created on band.ai, a real room
+> opened, peers discovered via `band_lookup_peers`, and the full Legal→Risk→Finance→Compliance
+> collaboration (including the Compliance **veto → re-plan**) posted through Band, visible in Band's
+> own Chats UI:
+>
+> ![Live Band room](docs/band-live-room.png)
+
 ---
 
 ## The problem

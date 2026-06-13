@@ -51,7 +51,7 @@ async def main():
     coord = ok["Coordinator"]
     try:
         room = await coord.agent_api_chats.create_agent_chat(chat=ChatRoomRequest())
-        room_id = getattr(room, "id", None) or getattr(getattr(room, "chat", None), "id", "?")
+        room_id = room.data.id
         print(f"  ✓ room created: {room_id}")
         for name in ("Legal", "Risk", "Finance", "Compliance"):
             if name in creds:

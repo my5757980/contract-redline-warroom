@@ -163,8 +163,8 @@ class RealBandRoom(SimBandRoom):
         from band.client.rest import ChatRoomRequest
         coord = self._client("Coordinator")
         resp = await coord.agent_api_chats.create_agent_chat(chat=ChatRoomRequest())
-        # response carries the new chat id (id / chat.id depending on schema)
-        self.room_id = getattr(resp, "id", None) or getattr(getattr(resp, "chat", None), "id", self.room_id)
+        # response schema: CreateAgentChatResponse(data=ChatRoom(id=...))
+        self.room_id = resp.data.id
         return await super().create()
 
     async def lookup_peers(self):
@@ -204,21 +204,26 @@ class RealBandRoom(SimBandRoom):
         await super().send_event(sender, kind, payload)
 
     async def receive(self, name: str, timeout: float = 30.0):
-        """Poll the agent's Band inbox for its next pending message."""
+        """Return this agent's next handoff.
+
+        Every message is posted to the LIVE Band room (visible in Band's Chats UI),
+        and the centralized orchestrator uses the local bridge for fast, deterministic
+        sequencing. We read the bridge first (instant); if nothing is queued we fall
+        back to polling the agent's real Band inbox.
+        """
+        msg = await super().receive(name, timeout=timeout)
+        if msg is not None:
+            return msg
+        # bridge empty → poll the real Band inbox briefly
         cli = self._client(name)
-        loop = asyncio.get_event_loop()
-        deadline = loop.time() + timeout
-        while loop.time() < deadline:
-            try:
-                resp = await cli.agent_api_messages.get_agent_next_message(self.room_id)
-            except Exception:  # noqa: BLE001
-                resp = None
-            content = getattr(getattr(resp, "message", None), "content", None) if resp else None
+        try:
+            resp = await cli.agent_api_messages.get_agent_next_message(self.room_id)
+            content = getattr(getattr(resp, "data", None), "content", None)
             if content:
                 return Message(sender="band", mentions=[name], text=content)
-            await asyncio.sleep(1.0)
-        # also drain any locally-bridged message so orchestration never deadlocks
-        return await super().receive(name, timeout=0.1)
+        except Exception:  # noqa: BLE001
+            pass
+        return None
 
 
 def load_creds(path: str = "agent_config.yaml") -> dict:
