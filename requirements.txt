@@ -1,5 +1,5 @@
 # Deployment (Railway PRIMARY / Render). For local dev prefer `uv`.
-# band-sdk[anthropic,langgraph]   # add when running live Band (SIMULATION=0)
+band-sdk>=1.0.0
 fastapi>=0.115
 uvicorn[standard]>=0.30
 websockets>=12

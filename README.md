@@ -53,20 +53,22 @@ Contract ─► [Coordinator] opens a Band room, discovers + recruits peers
 
 ## Band integration (Deep SDK usage, not a wrapper)
 
-`agents/common/band_client.py` maps 1:1 to Band platform tools:
+`agents/common/band_client.py` maps 1:1 to the real Band SDK (`band` 1.0.0, `band.CHAT_TOOL_NAMES`),
+driven through `band.client.rest.AsyncRestClient` — each agent authenticates with its own `api_key`,
+so messages/events are posted *as that agent* (a genuine multi-agent Band deployment):
 
-| Band platform tool | Where it's used |
-|---|---|
-| `thenvoi_create_chatroom` | Coordinator opens the review room |
-| `thenvoi_lookup_peers` | Coordinator discovers the specialist agents |
-| `thenvoi_add_participant` | Coordinator recruits Legal / Risk / Finance / Compliance |
-| `thenvoi_send_message` (`@mention`) | every agent→agent handoff (Band's mention-filtered delivery) |
-| `thenvoi_send_event` | structured findings, tool-calls, state changes, veto, final packet |
+| Band tool (`band.CHAT_TOOL_NAMES`) | Real SDK call | Where it's used |
+|---|---|---|
+| `band_create_chatroom` | `agent_api_chats.create_agent_chat` | Coordinator opens the review room |
+| `band_lookup_peers` | `agent_api_peers.list_agent_peers` | Coordinator discovers the specialist agents |
+| `band_add_participant` | `agent_api_participants.add_agent_chat_participant` | recruits Legal / Risk / Finance / Compliance |
+| `band_send_message` (`@mention`) | `agent_api_messages.create_agent_chat_message` | every agent→agent handoff (mention-filtered) |
+| `band_send_event` | `agent_api_events.create_agent_chat_event` | structured findings, tool-calls, state, veto, packet |
+| (inbox) | `agent_api_messages.get_agent_next_message` | each agent polls its Band inbox |
 
-Agents are built on the **`band-sdk` `claude_sdk` / `anthropic` adapter**. With live Band
-credentials (`SIMULATION=0` + `agent_config.yaml`) the same agent code drives the real Band
-WebSocket platform; offline it runs a faithful in-process Band-semantics bus so the demo never
-hard-fails during judging.
+With live credentials (`SIMULATION=0` + `agent_config.yaml`) the same agent code drives the real
+Band platform; offline it runs a faithful in-process Band-semantics bus so the demo never hard-fails
+during judging. Validate live keys with `uv run python -m agents.test_live`.
 
 ## Partner technology (both prizes)
 

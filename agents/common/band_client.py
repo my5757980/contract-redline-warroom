@@ -2,17 +2,17 @@
 
 Constitution Principle I: ALL inter-agent context exchange, handoffs, state
 changes and discovery flow through Band primitives. This module exposes a single
-`Room` interface mapping 1:1 to Band's platform tools:
+`Room` interface mapping 1:1 to Band's platform tools (band.CHAT_TOOL_NAMES):
 
-    create_chatroom   -> Room.create()
-    thenvoi_lookup_peers     -> Room.lookup_peers()
-    thenvoi_add_participant  -> Room.add_participant()
-    thenvoi_send_message     -> Room.send_message(mentions=[...])   # @mention filtered
-    thenvoi_send_event       -> Room.send_event(kind, payload)      # structured record
+    band_create_chatroom  -> Room.create()
+    band_lookup_peers     -> Room.lookup_peers()
+    band_add_participant  -> Room.add_participant()
+    band_send_message     -> Room.send_message(mentions=[...])   # @mention filtered
+    band_send_event       -> Room.send_event(kind, payload)      # structured record
 
 Two backends implement that interface:
 
-  * RealBandRoom  — uses the `band-sdk` (`thenvoi`) WebSocket platform. Active when
+  * RealBandRoom  — uses the real `band` SDK (band 1.0.0) REST API. Active when
                     SIMULATION=0 and agent_config.yaml + THENVOI_* env are present.
   * SimBandRoom   — a faithful in-process Band-semantics bus (mention-based delivery,
                     structured events, peer registry). Default for offline, demo-safe
@@ -92,14 +92,14 @@ class SimBandRoom:
         self._directory[p.name] = p
         self._inboxes.setdefault(p.name, asyncio.Queue())
 
-    # primitive: thenvoi_lookup_peers
+    # primitive: band_lookup_peers
     async def lookup_peers(self) -> list[Participant]:
         peers = list(self._directory.values())
         await self._emit("event", "Coordinator",
                          {"tool": "lookup_peers", "found": [p.name for p in peers]})
         return peers
 
-    # primitive: thenvoi_add_participant
+    # primitive: band_add_participant
     async def add_participant(self, name: str):
         p = self._directory.get(name)
         if not p:
@@ -109,7 +109,7 @@ class SimBandRoom:
         await self._emit("event", "Coordinator",
                          {"tool": "add_participant", "added": name, "role": p.role})
 
-    # primitive: thenvoi_send_message  (mention-filtered delivery)
+    # primitive: band_send_message  (mention-filtered delivery)
     async def send_message(self, sender: str, text: str, mentions: list[str]):
         msg = Message(sender=sender, mentions=mentions, text=text)
         await self._emit("message", sender, {"text": text, "mentions": mentions})
@@ -117,7 +117,7 @@ class SimBandRoom:
             if name in self._inboxes:
                 await self._inboxes[name].put(msg)
 
-    # primitive: thenvoi_send_event (structured tool-call / finding / state record)
+    # primitive: band_send_event (structured tool-call / finding / state record)
     async def send_event(self, sender: str, kind: str, payload: dict):
         await self._emit("event", sender, {"event_kind": kind, **payload})
 
@@ -130,54 +130,122 @@ class SimBandRoom:
 
 # ─────────────────────────── Real Band backend ────────────────────────────
 class RealBandRoom(SimBandRoom):
-    """Thin wrapper that drives the actual band-sdk platform.
+    """Drives the LIVE Band platform via the real `band` SDK REST API (band 1.0.0).
 
-    The orchestration contract is identical to SimBandRoom, so agent code is
-    unchanged. Only the transport differs: here primitives call the live thenvoi
-    platform tools over the WebSocket established by `Agent.create(...).run()`.
-    Falls back to simulation semantics for local fan-out bookkeeping while the
-    real platform handles cross-process delivery.
+    The orchestration contract is identical to SimBandRoom, so the agent code is
+    unchanged — only the transport differs. Each agent authenticates with its own
+    api_key (`creds[name] = {agent_id, api_key}`), so messages/events are posted
+    *as that agent*, exactly like a multi-process Band deployment.
+
+    Real Band tools used (band.CHAT_TOOL_NAMES):
+      band_create_chatroom  -> agent_api_chats.create_agent_chat
+      band_lookup_peers     -> agent_api_peers.list_agent_peers
+      band_add_participant  -> agent_api_participants.add_agent_chat_participant
+      band_send_message     -> agent_api_messages.create_agent_chat_message  (mentions)
+      band_send_event       -> agent_api_events.create_agent_chat_event
+      (inbox)               -> agent_api_messages.get_agent_next_message
     """
 
-    def __init__(self, review_id, audit, sink=None, agents: dict | None = None):
+    def __init__(self, review_id, audit, sink=None, creds: dict | None = None):
         super().__init__(review_id, audit, sink)
-        self._agents = agents or {}   # name -> live thenvoi Agent handle
+        self._creds = creds or {}                 # name -> {"agent_id","api_key"}
+        self._clients: dict = {}                  # name -> AsyncRestClient
+        self._base_url = os.getenv("THENVOI_REST_URL", "https://app.band.ai").rstrip("/")
+
+    def _client(self, name: str):
+        from band.client.rest import AsyncRestClient  # lazy: only needed live
+        if name not in self._clients:
+            c = self._creds[name]
+            self._clients[name] = AsyncRestClient(api_key=c["api_key"], base_url=self._base_url)
+        return self._clients[name]
 
     async def create(self):
-        # In real mode the Coordinator agent calls thenvoi_create_chatroom.
-        coord = self._agents.get("Coordinator")
-        if coord is not None:
-            self.room_id = await coord.tools.thenvoi_create_chatroom(  # type: ignore[attr-defined]
-                name=f"contract-{self.review_id}")
+        from band.client.rest import ChatRoomRequest
+        coord = self._client("Coordinator")
+        resp = await coord.agent_api_chats.create_agent_chat(chat=ChatRoomRequest())
+        # response carries the new chat id (id / chat.id depending on schema)
+        self.room_id = getattr(resp, "id", None) or getattr(getattr(resp, "chat", None), "id", self.room_id)
         return await super().create()
 
+    async def lookup_peers(self):
+        coord = self._client("Coordinator")
+        resp = await coord.agent_api_peers.list_agent_peers()
+        # mirror to audit, then fall back to our known specialist directory
+        await self._emit("event", "Coordinator",
+                         {"tool": "band_lookup_peers", "raw": str(resp)[:200]})
+        return list(self._directory.values())
+
     async def add_participant(self, name: str):
-        coord = self._agents.get("Coordinator")
-        peer = self._directory.get(name)
-        if coord is not None and peer is not None:
-            await coord.tools.thenvoi_add_participant(  # type: ignore[attr-defined]
-                chat_id=self.room_id, agent_id=peer.agent_id)
+        from band.client.rest import ParticipantRequest
+        coord = self._client("Coordinator")
+        agent_id = self._creds.get(name, {}).get("agent_id")
+        if agent_id:
+            await coord.agent_api_participants.add_agent_chat_participant(
+                self.room_id, participant=ParticipantRequest(participant_id=agent_id, role="member"))
         await super().add_participant(name)
 
     async def send_message(self, sender, text, mentions):
-        agent = self._agents.get(sender)
-        if agent is not None:
-            mention_str = " ".join(f"@{m}" for m in mentions)
-            await agent.tools.thenvoi_send_message(  # type: ignore[attr-defined]
-                chat_id=self.room_id, content=f"{mention_str} {text}")
+        from band.client.rest import ChatMessageRequest, ChatMessageRequestMentionsItem
+        cli = self._client(sender)
+        items = [ChatMessageRequestMentionsItem(id=self._creds[m]["agent_id"], name=m)
+                 for m in mentions if m in self._creds]
+        await cli.agent_api_messages.create_agent_chat_message(
+            self.room_id, message=ChatMessageRequest(content=text, mentions=items))
         await super().send_message(sender, text, mentions)
 
     async def send_event(self, sender, kind, payload):
-        agent = self._agents.get(sender)
-        if agent is not None:
-            await agent.tools.thenvoi_send_event(  # type: ignore[attr-defined]
-                chat_id=self.room_id, event_type=kind, data=payload)
+        import json as _json
+        from band.client.rest import ChatEventRequest
+        cli = self._client(sender)
+        await cli.agent_api_events.create_agent_chat_event(
+            self.room_id,
+            event=ChatEventRequest(content=_json.dumps({"kind": kind, **payload}),
+                                   message_type="tool_call", metadata=payload))
         await super().send_event(sender, kind, payload)
+
+    async def receive(self, name: str, timeout: float = 30.0):
+        """Poll the agent's Band inbox for its next pending message."""
+        cli = self._client(name)
+        loop = asyncio.get_event_loop()
+        deadline = loop.time() + timeout
+        while loop.time() < deadline:
+            try:
+                resp = await cli.agent_api_messages.get_agent_next_message(self.room_id)
+            except Exception:  # noqa: BLE001
+                resp = None
+            content = getattr(getattr(resp, "message", None), "content", None) if resp else None
+            if content:
+                return Message(sender="band", mentions=[name], text=content)
+            await asyncio.sleep(1.0)
+        # also drain any locally-bridged message so orchestration never deadlocks
+        return await super().receive(name, timeout=0.1)
+
+
+def load_creds(path: str = "agent_config.yaml") -> dict:
+    """Load per-agent {agent_id, api_key} from agent_config.yaml (live mode).
+
+    Keys are lower-case in the file (coordinator/legal/...); we map them to the
+    capitalized agent names used in the room.
+    """
+    import os as _os
+    if not _os.path.exists(path):
+        return {}
+    import yaml
+    with open(path, "r", encoding="utf-8") as fh:
+        raw = yaml.safe_load(fh) or {}
+    creds = {}
+    for key, val in raw.items():
+        if isinstance(val, dict) and val.get("agent_id") and val.get("api_key") \
+                and not str(val["agent_id"]).startswith("<"):
+            creds[key.capitalize()] = {"agent_id": val["agent_id"], "api_key": val["api_key"]}
+    return creds
 
 
 def make_room(review_id: str, audit: AuditLog, sink: EventSink | None = None,
-              agents: dict | None = None):
-    """Factory: real Band room when SIMULATION=0, else the simulation bus."""
+              creds: dict | None = None):
+    """Factory: live Band room when SIMULATION=0 (needs creds), else the sim bus."""
     if _is_real():
-        return RealBandRoom(review_id, audit, sink, agents)
+        creds = creds or load_creds()
+        if creds:
+            return RealBandRoom(review_id, audit, sink, creds)
     return SimBandRoom(review_id, audit, sink)
