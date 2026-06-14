@@ -17,11 +17,26 @@ from .common.contract import Contract
 SPECIALISTS = ("Legal", "Risk", "Finance", "Compliance")
 
 
+def _to_usd(val) -> float | None:
+    """Coerce a finance-agent USD value to a number, or None if non-numeric
+    (e.g. the LLM answers "unlimited" for an uncapped liability clause)."""
+    if isinstance(val, (int, float)):
+        return float(val)
+    if isinstance(val, str):
+        cleaned = val.replace(",", "").replace("$", "").strip()
+        try:
+            return float(cleaned)
+        except ValueError:
+            return None
+    return None
+
+
 def _exposure_score(risk_out: dict, fin_out: dict, comp_out: dict) -> int:
     """Blend severity, dollar worst-case and compliance into a 0–100 score."""
     sev = {"low": 20, "medium": 55, "high": 85}.get((risk_out.get("severity") or "").lower(), 40)
-    worst = fin_out.get("worst_case_usd") or 0
-    dollar = min(100, worst / 10000)          # $1M worst-case ≈ 100
+    worst = _to_usd(fin_out.get("worst_case_usd"))
+    # non-numeric worst-case (e.g. "unlimited") -> treat as maximum dollar exposure
+    dollar = 100 if worst is None else min(100, worst / 10000)          # $1M worst-case ≈ 100
     comp_pen = 100 if comp_out.get("verdict") == "FAIL" else 0
     score = round(0.4 * sev + 0.35 * dollar + 0.25 * comp_pen)
     return max(0, min(100, score))
