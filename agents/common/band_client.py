@@ -231,18 +231,28 @@ def load_creds(path: str = "agent_config.yaml") -> dict:
 
     Keys are lower-case in the file (coordinator/legal/...); we map them to the
     capitalized agent names used in the room.
+
+    Falls back to BAND_<AGENT>_AGENT_ID / BAND_<AGENT>_API_KEY env vars when the
+    file is absent (e.g. on Railway/Render, where agent_config.yaml is git-ignored).
     """
     import os as _os
-    if not _os.path.exists(path):
-        return {}
-    import yaml
-    with open(path, "r", encoding="utf-8") as fh:
-        raw = yaml.safe_load(fh) or {}
+    if _os.path.exists(path):
+        import yaml
+        with open(path, "r", encoding="utf-8") as fh:
+            raw = yaml.safe_load(fh) or {}
+        creds = {}
+        for key, val in raw.items():
+            if isinstance(val, dict) and val.get("agent_id") and val.get("api_key") \
+                    and not str(val["agent_id"]).startswith("<"):
+                creds[key.capitalize()] = {"agent_id": val["agent_id"], "api_key": val["api_key"]}
+        return creds
+
     creds = {}
-    for key, val in raw.items():
-        if isinstance(val, dict) and val.get("agent_id") and val.get("api_key") \
-                and not str(val["agent_id"]).startswith("<"):
-            creds[key.capitalize()] = {"agent_id": val["agent_id"], "api_key": val["api_key"]}
+    for agent in ("coordinator", "legal", "risk", "finance", "compliance"):
+        agent_id = _os.environ.get(f"BAND_{agent.upper()}_AGENT_ID")
+        api_key = _os.environ.get(f"BAND_{agent.upper()}_API_KEY")
+        if agent_id and api_key:
+            creds[agent.capitalize()] = {"agent_id": agent_id, "api_key": api_key}
     return creds
 
 
