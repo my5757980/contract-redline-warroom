@@ -34,3 +34,6 @@ Thumbs.db
 
 # agent folder credentials (per specifyplus security note)
 .claude/settings.local.json
+
+# demo video build artifacts
+docs/_video_build/
