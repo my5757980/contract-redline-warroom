@@ -12,26 +12,26 @@ Deadline: **Jun 19, 8:00 PM PST**. Submit at the hackathon page on lablab.ai.
   `Anthropic Claude`, `FastAPI`, `Python`, `Track 3: Regulated & High-Stakes`.
 
 ## 📸 Cover Image & Presentation
-- **Cover Image:** `docs/warroom-demo.png` (or a titled variant).
-- **Video Presentation:** record per `docs/DEMO.md` (≤ 3 min).
-- **Slide Presentation:** build from the 6-slide outline in `docs/DEMO.md`.
+- **Cover Image:** `docs/warroom-demo.png` (or `docs/demo-03-final.png`).
+- **Video Presentation:** [`docs/demo-video.mp4`](demo-video.mp4) — 2:12, narrated, recorded against
+  the live Railway deployment (real Band + AI/ML API + Featherless calls).
+- **Slide Presentation:** [`docs/slides.pdf`](slides.pdf) — 6 slides per the outline in `docs/DEMO.md`.
 
 ## 💻 App Hosting & Code Repository
-- **Public GitHub Repository:** push this repo (MIT, no secrets committed — `.env` and
-  `agent_config.yaml` are git-ignored).
-- **Demo Application Platform / URL:** deploy the FastAPI app (serves the UI). Options:
-  - Railway (PRIMARY) or Render — `uvicorn backend.main:app --host 0.0.0.0 --port $PORT`.
-  - Procfile: `web: uvicorn backend.main:app --host 0.0.0.0 --port $PORT`.
+- **Public GitHub Repository:** https://github.com/my5757980/contract-redline-warroom (MIT, no
+  secrets committed — `.env` and `agent_config.yaml` are git-ignored).
+- **Demo Application URL (live):** https://web-production-26f2e.up.railway.app
+  (Railway, `SIMULATION=0`, real Band + AI/ML API + Featherless).
 
 ## Pre-submit verification (acceptance — from the spec)
-- [ ] Band transcript shows ≥4 agents with real @mention handoffs (✓ Coordinator+Legal+Risk+Finance+Compliance).
-- [ ] Compliance veto → Coordinator re-plan loop is visible (✓).
-- [ ] Every redline/risk finding carries a clause citation (✓).
-- [ ] Final status set only after explicit human action (✓ human gate).
-- [ ] `GET /api/verify/{id}` matches the sealed root hash (✓ 23 entries, valid).
-- [ ] AI/ML API + Featherless both exercised (add keys; badges increment; `/api/health` shows tally).
-- [ ] Clean run: `uv run uvicorn backend.main:app` → open `:8000` → Run Review (✓).
-- [ ] LICENSE present (MIT) and original work.
+- [x] Band transcript shows ≥4 agents with real @mention handoffs (✓ Coordinator+Legal+Risk+Finance+Compliance).
+- [x] Compliance veto → Coordinator re-plan loop is visible (✓ verified live, 2026-06-14).
+- [x] Every redline/risk finding carries a clause citation (✓).
+- [x] Final status set only after explicit human action (✓ human gate — Reject sealed).
+- [x] `GET /api/verify/{id}` matches the sealed root hash (✓ 27 entries, "chain valid").
+- [x] AI/ML API + Featherless both exercised (real keys live; `/api/health` shows 0% stub usage).
+- [x] Clean run on live URL: open Railway app → Run Review → full pipeline completes (✓).
+- [x] LICENSE present (MIT) and original work.
 
 ## Partner free credits to claim before recording
 - **Band Pro** — promo code `BANDHACK26` (band.ai → Manage Billing → Pro → Add promotion code).
