@@ -8,7 +8,8 @@ sealed, tamper-evident audit trail.**
 > 🏆 Built for the **Band of Agents Hackathon** (lablab.ai) — **Track 3: Regulated & High-Stakes Workflows**
 > Partners used: **AI/ML API** (primary reasoning) + **Featherless AI** (open-source compliance inference)
 
-**🔗 Live app:** https://web-production-26f2e.up.railway.app — click **Run Review** to watch it work end-to-end
+**🔗 Live app:** currently offline — the Railway deployment has been taken down. Run it locally with the
+command below (offline-safe simulation mode, no keys needed) and click **Run Review**.
 **🎬 Demo video:** [`docs/demo-video.mp4`](docs/demo-video.mp4) · **Slides:** [`docs/slides.pdf`](docs/slides.pdf)
 
 ![War Room](docs/warroom-demo.png)
