@@ -12,11 +12,13 @@ Run:  uv run uvicorn backend.main:app --reload --port 8000
 from __future__ import annotations
 
 import asyncio
+import hmac
+import os
 import uuid
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, Header, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -58,8 +60,36 @@ class StartReview(BaseModel):
 class Decision(BaseModel):
     review_id: str
     action: str          # approve | reject | request_changes
-    reviewer: str = "operator"
-    note: str = ""
+    note: str = ""       # the reviewer is whoever the token belongs to, never a name in the body
+
+
+MIN_TOKEN_LEN = 16
+
+
+def _reviewers() -> dict[str, str]:
+    """token -> reviewer name, from WARROOM_REVIEWERS="alice:<token>,bob:<token>"."""
+    out = {}
+    for pair in os.getenv("WARROOM_REVIEWERS", "").split(","):
+        name, _, token = pair.partition(":")
+        if name.strip() and len(token.strip()) >= MIN_TOKEN_LEN:
+            out[token.strip()] = name.strip()
+    return out
+
+
+def _reviewer_for(authorization: str | None, reviewers: dict[str, str]) -> str | None:
+    scheme, _, token = (authorization or "").partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        return None
+    for known, name in reviewers.items():
+        if hmac.compare_digest(token.strip().encode(), known.encode()):
+            return name
+    return None
+
+
+def _gate_open(review_id: str) -> bool:
+    """The human decides on the finished packet: the gate opens once the Coordinator asks for it."""
+    return any(e["kind"] == "event" and e["payload"].get("event_kind") == "awaiting_human_gate"
+               for e in audit.entries(review_id))
 
 
 @app.get("/")
@@ -118,7 +148,15 @@ def verify(review_id: str):
 
 
 @app.post("/api/decision")
-async def decide(d: Decision):
+async def decide(d: Decision, authorization: str | None = Header(None)):
+    reviewers = _reviewers()
+    if not reviewers:
+        raise HTTPException(503, "Human gate closed: no reviewer configured. Set WARROOM_REVIEWERS="
+                                 f"name:token (tokens of {MIN_TOKEN_LEN}+ characters).")
+    reviewer = _reviewer_for(authorization, reviewers)
+    if not reviewer:
+        raise HTTPException(401, "A valid reviewer token is required (Authorization: Bearer <token>).",
+                            headers={"WWW-Authenticate": "Bearer"})
     if d.action not in ("approve", "reject", "request_changes"):
         raise HTTPException(400, "invalid action")
     rev = audit.get_review(d.review_id)
@@ -126,9 +164,11 @@ async def decide(d: Decision):
         raise HTTPException(404, "unknown review")
     if rev.get("root_hash"):
         raise HTTPException(409, "review already sealed")
-    root = audit.seal(d.review_id, {"action": d.action, "reviewer": d.reviewer, "note": d.note})
+    if not _gate_open(d.review_id):
+        raise HTTPException(409, "review still running; the gate opens when the final packet is posted")
+    root = audit.seal(d.review_id, {"action": d.action, "reviewer": reviewer, "note": d.note})
     ev = {"review_id": d.review_id, "kind": "seal", "actor": "human",
-          "payload": {"action": d.action, "reviewer": d.reviewer, "note": d.note,
+          "payload": {"action": d.action, "reviewer": reviewer, "note": d.note,
                       "root_hash": root}, "seq": -2, "hash": root, "ts": 0}
     await _broadcast(ev)
     return {"sealed": True, "root_hash": root, "verify": audit.verify(d.review_id)}

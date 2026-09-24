@@ -41,6 +41,12 @@ async def run(agent: SpecialistAgent, contract: Contract, room: SimBandRoom,
                                 "VETO: personal-data clause lacks a DPA. Coordinator, please "
                                 "attach the required addenda and re-circulate.",
                                 mentions=["Coordinator"])
+    elif out.get("veto"):
+        await room.send_message("Compliance",
+                                "VETO STANDS after the re-plan: the addenda do not resolve the "
+                                "policy violation. Coordinator, do not recommend sign-off; escalate "
+                                "to the human reviewer.",
+                                mentions=["Coordinator"])
     else:
         await room.send_message("Compliance",
                                 f"Compliance {out.get('verdict')}. Coordinator, ready for sign-off.",

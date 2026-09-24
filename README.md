@@ -93,9 +93,31 @@ Provider usage is tallied per call (`/api/health` → `partners`) as prize evide
 ## Tamper-evident audit (the "no black box" differentiator)
 
 `agents/common/audit.py` appends every event to a **SHA-256 hash chain**
-(`entry_hash = sha256(prev_hash + canonical(payload) + ts + seq)`). The human decision seals a
-**root hash**; `GET /api/verify/{id}` recomputes the whole chain — any later edit is detected
-(`broken_at_seq`). Try it: the **Verify** button in the UI.
+(`entry_hash = sha256(canonical([prev_hash, review_id, seq, ts, actor, kind, payload]))`), so
+changing *who* acted, *what kind* of entry it was, or *which review* it belongs to breaks the chain
+just like changing its content. The human decision seals a **root hash**, and a sealed chain must
+end exactly there. `GET /api/verify/{id}` recomputes the whole chain, so any later edit or any
+entry added after the seal is detected (`broken_at_seq`). Try it: the **Verify** button in the UI.
+
+**A veto that survives the re-plan is never waved through.** If Compliance still vetoes after the
+Coordinator attaches the addenda, it says so, the Coordinator records `veto_unresolved`, and the
+packet recommends **REJECT** whatever the exposure score is. The human reviewer still decides.
+
+## The human gate
+
+Only configured reviewers can seal a decision, and the seal records the reviewer the token belongs
+to, not a name typed into the request:
+
+```bash
+# .env: one or more name:token pairs, tokens of 16+ characters
+WARROOM_REVIEWERS=alice:<token>,bob:<token>
+python -c "import secrets; print(secrets.token_urlsafe(24))"   # makes a token
+```
+
+With no reviewer configured the gate stays closed (`503`), and no one can Approve or Reject. In the
+War Room, paste your token into the **Reviewer token** box. From code, send
+`Authorization: Bearer <token>` to `POST /api/decision`. The gate opens once the final packet is
+posted.
 
 ---
 

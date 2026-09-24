@@ -25,8 +25,10 @@ def _canonical(payload: Any) -> str:
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
-def _hash_entry(prev_hash: str, payload: Any, ts: float, seq: int) -> str:
-    blob = f"{prev_hash}|{_canonical(payload)}|{ts:.6f}|{seq}"
+def _hash_entry(prev_hash: str, review_id: str, seq: int, ts: float, actor: str, kind: str,
+                payload: Any) -> str:
+    """Hash every stored field, so none of them (who acted, what kind, which review) can change unseen."""
+    blob = _canonical([prev_hash, review_id, seq, f"{ts:.6f}", actor, kind, payload])
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
 
@@ -83,7 +85,7 @@ class AuditLog:
         prev_hash = last["entry_hash"] if last else GENESIS
         seq = (last["seq"] + 1) if last else 0
         ts = time.time()
-        entry_hash = _hash_entry(prev_hash, payload, ts, seq)
+        entry_hash = _hash_entry(prev_hash, review_id, seq, ts, actor, kind, payload)
         self._conn.execute(
             "INSERT INTO audit_entries VALUES (?,?,?,?,?,?,?,?)",
             (review_id, seq, ts, actor, kind, _canonical(payload), prev_hash, entry_hash),
@@ -110,10 +112,14 @@ class AuditLog:
         prev = GENESIS
         for r in rows:
             payload = json.loads(r["payload_json"])
-            recomputed = _hash_entry(prev, payload, r["ts"], r["seq"])
+            recomputed = _hash_entry(prev, review_id, r["seq"], r["ts"], r["actor"], r["kind"], payload)
             if recomputed != r["entry_hash"] or r["prev_hash"] != prev:
                 return {"valid": False, "broken_at_seq": r["seq"], "root_hash": None}
             prev = r["entry_hash"]
+        # A sealed review must end exactly at its sealed root: nothing may follow, or be cut from, the decision.
+        review = self.get_review(review_id)
+        if review and review.get("root_hash") and prev != review["root_hash"]:
+            return {"valid": False, "broken_at_seq": rows[-1]["seq"] if rows else None, "root_hash": None}
         return {"valid": True, "entries": len(rows), "root_hash": prev if rows else None}
 
     def entries(self, review_id: str) -> list[dict]:

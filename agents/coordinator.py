@@ -97,6 +97,12 @@ async def run_review(contract: Contract, review_id: str, audit: AuditLog,
                                     mentions=["Compliance"])
             comp_out = await compliance.run(agents["Compliance"], contract, room, fin_out,
                                             replan=True)
+            if comp_out.get("veto"):
+                await room.send_event("Coordinator", "veto_unresolved", {
+                    "reason": "compliance veto stands after the re-plan",
+                    "citation": comp_out.get("citation"),
+                    "required_addenda": comp_out.get("required_addenda", []),
+                })
         return legal_out, risk_out, fin_out, comp_out
 
     # specialists wait on their inboxes; drive() feeds them — run concurrently
@@ -105,6 +111,7 @@ async def run_review(contract: Contract, review_id: str, audit: AuditLog,
     # 6) Aggregate + post final packet, then request the human gate
     score = _exposure_score(risk_out, fin_out, comp_out)
     audit.set_exposure(review_id, score)
+    veto_stands = bool(comp_out.get("veto"))
     packet = {
         "exposure_score": score,
         "risk": {"severity": risk_out.get("severity"),
@@ -112,9 +119,12 @@ async def run_review(contract: Contract, review_id: str, audit: AuditLog,
         "finance": {"worst_case_usd": fin_out.get("worst_case_usd"),
                     "annual_value_usd": fin_out.get("annual_value_usd")},
         "compliance": {"verdict": comp_out.get("verdict"),
-                       "required_addenda": comp_out.get("required_addenda", [])},
+                       "required_addenda": comp_out.get("required_addenda", []),
+                       "veto": veto_stands},
         "redlines": legal_out.get("redlines", []),
-        "recommendation": "REJECT" if score >= 70 else
+        # A hard policy veto that survived the re-plan is never recommended for approval,
+        # whatever the blended score says; the human gate still makes the final call.
+        "recommendation": "REJECT" if score >= 70 or veto_stands else
                           ("REVIEW" if score >= 40 else "APPROVE"),
     }
     await room.send_event("Coordinator", "final_packet", packet)

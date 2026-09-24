@@ -79,6 +79,8 @@
 
       <div class="lane p-4">
         <h3 class="font-semibold mb-2">Human Gate <span class="text-slate-500 text-xs">(only a human can decide)</span></h3>
+        <input id="reviewerToken" type="password" autocomplete="off" placeholder="Reviewer token (from WARROOM_REVIEWERS)"
+               class="w-full mb-2 px-2 py-1 rounded bg-slate-900/60 border border-slate-700 text-sm">
         <div class="grid grid-cols-3 gap-2">
           <button data-act="approve" class="gate bg-emerald-600/80 hover:bg-emerald-500 py-2 rounded text-sm">Approve</button>
           <button data-act="request_changes" class="gate bg-amber-600/80 hover:bg-amber-500 py-2 rounded text-sm">Request Changes</button>
@@ -162,7 +164,9 @@ $("#verifyBtn").onclick=async()=>{ if(!reviewId)return;
   $("#verifyResult").innerHTML=v.valid?`<span class="text-emerald-400">✓ chain valid · ${v.entries} entries · root ${(v.root_hash||'').slice(0,16)}…</span>`:`<span class="text-rose-400">✗ TAMPERED at #${v.broken_at_seq}</span>`;
 };
 document.querySelectorAll(".gate").forEach(b=>b.onclick=async()=>{ if(!reviewId)return;
-  const d=await fetch(API+"/api/decision",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({review_id:reviewId,action:b.dataset.act,reviewer:"operator",note:"decided in War Room UI"})}).then(r=>r.json());
+  const token=$("#reviewerToken").value.trim();
+  if(!token){$("#gateResult").textContent="Enter your reviewer token first.";return;}
+  const d=await fetch(API+"/api/decision",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+token},body:JSON.stringify({review_id:reviewId,action:b.dataset.act,note:"decided in War Room UI"})}).then(r=>r.json());
   if(d.detail){$("#gateResult").textContent=d.detail;return;}
   $("#gateResult").innerHTML=`Decision <b>${b.dataset.act}</b> sealed · verify ${d.verify.valid?'<span class="text-emerald-400">✓</span>':'✗'} · root <span class="hashmono">${d.root_hash.slice(0,20)}…</span>`;
 });
