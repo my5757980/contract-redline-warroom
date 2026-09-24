@@ -79,7 +79,7 @@
 
       <div class="lane p-4">
         <h3 class="font-semibold mb-2">Human Gate <span class="text-slate-500 text-xs">(only a human can decide)</span></h3>
-        <input id="reviewerToken" type="password" autocomplete="off" placeholder="Reviewer token (from WARROOM_REVIEWERS)"
+        <input id="reviewerToken" type="password" autocomplete="off" placeholder="Reviewer token (from WARROOM_REVIEWERS), to run and to decide"
                class="w-full mb-2 px-2 py-1 rounded bg-slate-900/60 border border-slate-700 text-sm">
         <div class="grid grid-cols-3 gap-2">
           <button data-act="approve" class="gate bg-emerald-600/80 hover:bg-emerald-500 py-2 rounded text-sm">Approve</button>
@@ -148,9 +148,12 @@ function renderPacket(p){
 }
 
 async function start(){
+  const token=$("#reviewerToken").value.trim();
+  if(!token){$("#status").textContent="Enter your reviewer token (Human Gate box) first.";return;}
   $("#transcript").innerHTML=""; $("#redlines").innerHTML=""; $("#audit").innerHTML="";
   $("#score").textContent="—"; $("#status").innerHTML='<span class="pulse text-sky-300">agents coordinating…</span>';
-  const r=await fetch(API+"/api/reviews",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({use_sample:true})}).then(r=>r.json());
+  const r=await fetch(API+"/api/reviews",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+token},body:JSON.stringify({use_sample:true})}).then(r=>r.json());
+  if(r.detail){$("#status").textContent=r.detail;return;}
   reviewId=r.review_id; $("#roomId").textContent="· "+reviewId;
   if(ws) ws.close();
   ws=new WebSocket((API.replace("http","ws"))+"/ws/reviews/"+reviewId);

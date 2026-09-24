@@ -86,6 +86,19 @@ def _reviewer_for(authorization: str | None, reviewers: dict[str, str]) -> str |
     return None
 
 
+def _require_reviewer(authorization: str | None, closed: str) -> str:
+    """The reviewer the bearer token belongs to: 503 when nobody is configured, 401 for a bad token."""
+    reviewers = _reviewers()
+    if not reviewers:
+        raise HTTPException(503, f"{closed}: no reviewer configured. Set WARROOM_REVIEWERS="
+                                 f"name:token (tokens of {MIN_TOKEN_LEN}+ characters).")
+    reviewer = _reviewer_for(authorization, reviewers)
+    if not reviewer:
+        raise HTTPException(401, "A valid reviewer token is required (Authorization: Bearer <token>).",
+                            headers={"WWW-Authenticate": "Bearer"})
+    return reviewer
+
+
 def _gate_open(review_id: str) -> bool:
     """The human decides on the finished packet: the gate opens once the Coordinator asks for it."""
     return any(e["kind"] == "event" and e["payload"].get("event_kind") == "awaiting_human_gate"
@@ -103,14 +116,17 @@ def health():
 
 
 @app.post("/api/reviews")
-async def start_review(body: StartReview):
+async def start_review(body: StartReview, authorization: str | None = Header(None)):
+    # Every review runs five agents on paid LLM calls, so only a reviewer may start one.
+    _require_reviewer(authorization, "Reviews closed")
     if body.use_sample or not body.text:
         text = Path("samples/sample_msa.txt").read_text(encoding="utf-8")
         title = "Sample Vendor MSA"
     else:
         text, title = body.text, body.title
     contract = ingest(text, title=title)
-    review_id = "rev_" + uuid.uuid4().hex[:8]
+    # The ID is the only key to read a review, so it carries 128 random bits and can't be guessed.
+    review_id = "rev_" + uuid.uuid4().hex
     audit.save_contract(contract.id, contract.title, contract.raw_text)
     for c in contract.clauses:
         audit.save_clause(c.id, contract.id, c.section, c.text)
@@ -149,14 +165,7 @@ def verify(review_id: str):
 
 @app.post("/api/decision")
 async def decide(d: Decision, authorization: str | None = Header(None)):
-    reviewers = _reviewers()
-    if not reviewers:
-        raise HTTPException(503, "Human gate closed: no reviewer configured. Set WARROOM_REVIEWERS="
-                                 f"name:token (tokens of {MIN_TOKEN_LEN}+ characters).")
-    reviewer = _reviewer_for(authorization, reviewers)
-    if not reviewer:
-        raise HTTPException(401, "A valid reviewer token is required (Authorization: Bearer <token>).",
-                            headers={"WWW-Authenticate": "Bearer"})
+    reviewer = _require_reviewer(authorization, "Human gate closed")
     if d.action not in ("approve", "reject", "request_changes"):
         raise HTTPException(400, "invalid action")
     rev = audit.get_review(d.review_id)

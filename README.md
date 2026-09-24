@@ -119,6 +119,11 @@ War Room, paste your token into the **Reviewer token** box. From code, send
 `Authorization: Bearer <token>` to `POST /api/decision`. The gate opens once the final packet is
 posted.
 
+Starting a review takes the same token (`POST /api/reviews`), because every review runs five agents
+on paid LLM calls: without one the request gets `401`, and nothing is stored or run. The review ID it
+returns carries 128 random bits, so the read endpoints (`/api/reviews/{id}`, `/api/audit/{id}`,
+`/api/verify/{id}` and the WebSocket) are open only to someone who was given the ID.
+
 ---
 
 ## Run it
@@ -127,7 +132,8 @@ posted.
 # 1) Python agents + backend (offline-safe simulation mode)
 uv venv && uv pip install python-dotenv httpx pyyaml fastapi "uvicorn[standard]" websockets
 uv run uvicorn backend.main:app --port 8000
-#   → open http://127.0.0.1:8000  and click "Run Review"
+#   → set WARROOM_REVIEWERS in .env, open http://127.0.0.1:8000,
+#     paste your token into "Reviewer token" and click "Run Review"
 
 # CLI version (prints the Band transcript):
 uv run python -m agents.run_all

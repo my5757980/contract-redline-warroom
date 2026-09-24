@@ -2,7 +2,8 @@
 
 * a Compliance veto that survives the re-plan is never waved through to sign-off;
 * the audit chain detects a changed actor, kind or review, and anything added after the seal;
-* only an authenticated human reviewer can seal a decision, under their own name.
+* only an authenticated human reviewer can seal a decision, under their own name;
+* only an authenticated reviewer can start a review (each one spends LLM credits), and its ID can't be guessed.
 
 Runs offline in SIMULATION mode.  From the repo root:  python -m pytest tests
 """
@@ -149,3 +150,36 @@ def test_the_seal_names_the_authenticated_reviewer_not_the_claimed_one(gate, mon
     assert r.status_code == 200 and r.json()["sealed"] and r.json()["verify"]["valid"]
     assert main.audit.entries("rev_g")[-1]["payload"]["reviewer"] == "alice"
     assert decide(client, TOKEN).status_code == 409      # sealed once, never again
+
+
+# ── Starting a review ───────────────────────────────────────────────────────
+def start(client, token=None):
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    return client.post("/api/reviews", json={"use_sample": True}, headers=headers)
+
+
+def stored_contracts(main) -> int:
+    return main.audit._conn.execute("SELECT COUNT(*) FROM contracts").fetchone()[0]
+
+
+def test_no_review_can_start_when_no_reviewer_is_configured(gate, monkeypatch):
+    main, client = gate
+    monkeypatch.delenv("WARROOM_REVIEWERS", raising=False)
+    assert start(client, TOKEN).status_code == 503
+    assert stored_contracts(main) == 0
+
+
+@pytest.mark.parametrize("token", [None, "wrong-token"])
+def test_starting_a_review_needs_a_valid_reviewer_token(gate, monkeypatch, token):
+    main, client = gate
+    monkeypatch.setenv("WARROOM_REVIEWERS", f"alice:{TOKEN}")
+    assert start(client, token).status_code == 401
+    assert stored_contracts(main) == 0                   # nothing stored, no agent started
+
+
+def test_a_reviewer_starts_a_review_whose_id_cannot_be_guessed(gate, monkeypatch):
+    main, client = gate
+    monkeypatch.setenv("WARROOM_REVIEWERS", f"alice:{TOKEN}")
+    r = start(client, TOKEN)
+    assert r.status_code == 200 and stored_contracts(main) == 1
+    assert len(r.json()["review_id"].removeprefix("rev_")) == 32      # 128 random bits, not 32

@@ -12,7 +12,11 @@ c = TestClient(app)
 
 print("health:", c.get("/api/health").json()["ok"])
 
-r = c.post("/api/reviews", json={"use_sample": True}).json()
+# only a reviewer may start a review (each one spends LLM credits)...
+anon_start = c.post("/api/reviews", json={"use_sample": True})
+print("unauthenticated start:", anon_start.status_code)
+
+r = c.post("/api/reviews", json={"use_sample": True}, headers={"Authorization": f"Bearer {TOKEN}"}).json()
 rid = r["review_id"]
 print("started:", rid, "clauses:", len(r["clauses"]))
 
@@ -42,5 +46,6 @@ print("verify endpoint:", v["valid"], "entries:", v.get("entries"))
 
 n_events = len(c.get(f"/api/reviews/{rid}").json()["events"])
 print("streamed events:", n_events)
-print("OK" if (pkt["exposure_score"] > 0 and anon.status_code == 401 and dec["sealed"] and v["valid"])
+print("OK" if (pkt["exposure_score"] > 0 and anon_start.status_code == 401 and anon.status_code == 401
+               and dec["sealed"] and v["valid"])
       else "FAIL")
